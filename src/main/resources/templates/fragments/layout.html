@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title} + ' — av.by monitor'">av.by monitor</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+
+<header th:fragment="nav(active)" class="topbar">
+    <div class="container topbar__inner">
+        <a class="brand" th:href="@{/}">
+            <span class="brand__mark">av</span>
+            <span class="brand__text">monitor<small>срочные объявления</small></span>
+        </a>
+        <nav class="nav">
+            <a th:href="@{/}" th:classappend="${active == 'dashboard'} ? 'is-active' : ''">Панель</a>
+            <a th:href="@{/listings}" th:classappend="${active == 'listings'} ? 'is-active' : ''">Объявления</a>
+            <a th:href="@{/settings}" th:classappend="${active == 'settings'} ? 'is-active' : ''">Настройки</a>
+        </nav>
+        <a class="btn btn--primary" th:href="@{/profiles/new}">+ Новый профиль</a>
+    </div>
+</header>
+
+<div th:fragment="flash" class="container flash-wrap">
+    <div th:if="${message}" class="flash flash--ok" th:text="${message}"></div>
+    <div th:if="${error}" class="flash flash--err" th:text="${error}"></div>
+</div>
+
+<footer th:fragment="footer" class="footer">
+    <div class="container">
+        <span>av.by monitor</span>
+        <span>Данные берутся с публичных страниц cars.av.by</span>
+    </div>
+</footer>
+
+</body>
+</html>

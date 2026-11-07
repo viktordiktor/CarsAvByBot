@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Профиль поиска')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: nav('dashboard')}"></header>
+<div th:replace="~{fragments/layout :: flash}"></div>
+
+<main class="container page page--narrow">
+    <div class="page__head">
+        <div>
+            <h1 th:text="${form.id == null ? 'Новый профиль поиска' : 'Редактирование профиля'}">Профиль</h1>
+            <p class="muted">Настройте параметры так же, как в фильтре на cars.av.by. Все поля необязательны, кроме названия.</p>
+        </div>
+        <a class="btn" th:href="@{/}">← На панель</a>
+    </div>
+
+    <form class="form" th:action="@{/profiles}" method="post" th:object="${form}">
+        <input type="hidden" th:field="*{id}">
+
+        <div th:if="${#fields.hasErrors('*')}" class="alert alert--err">
+            <strong>Проверьте форму:</strong>
+            <ul>
+                <li th:each="err : ${#fields.errors('*')}" th:text="${err}">Ошибка</li>
+            </ul>
+        </div>
+
+        <section class="panel">
+            <h2>Основное</h2>
+            <div class="grid grid--2">
+                <label class="field">
+                    <span class="field__label">Название профиля *</span>
+                    <input type="text" th:field="*{name}" maxlength="120" placeholder="Например: Срочные до 4000 $">
+                    <span class="field__error" th:if="${#fields.hasErrors('name')}" th:errors="*{name}"></span>
+                </label>
+
+                <label class="field">
+                    <span class="field__label">Ключевое слово в описании</span>
+                    <input type="text" th:field="*{keyword}" maxlength="200" placeholder="срочно">
+                    <span class="field__hint">Параметр <code>description</code> на av.by. Оставьте пустым, чтобы не фильтровать по тексту.</span>
+                </label>
+
+                <label class="field">
+                    <span class="field__label">Продавец</span>
+                    <select th:field="*{sellerType}">
+                        <option th:each="opt : ${sellerTypes}" th:value="${opt.value}" th:text="${opt.label}"></option>
+                    </select>
+                </label>
+
+                <label class="field field--check">
+                    <input type="checkbox" th:field="*{enabled}">
+                    <span>Профиль включён (планировщик будет его проверять)</span>
+                </label>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Цена и год</h2>
+            <div class="grid grid--4">
+                <label class="field">
+                    <span class="field__label">Цена от, $</span>
+                    <input type="number" min="0" th:field="*{priceMinUsd}" placeholder="2000">
+                </label>
+                <label class="field">
+                    <span class="field__label">Цена до, $</span>
+                    <input type="number" min="0" th:field="*{priceMaxUsd}" placeholder="4000">
+                    <span class="field__error" th:if="${#fields.hasErrors('priceMaxUsd')}" th:errors="*{priceMaxUsd}"></span>
+                </label>
+                <label class="field">
+                    <span class="field__label">Год от</span>
+                    <select th:field="*{yearMin}">
+                        <option value="">Любой</option>
+                        <option th:each="year : ${years}" th:value="${year.value}" th:text="${year.label}"></option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span class="field__label">Год до</span>
+                    <select th:field="*{yearMax}">
+                        <option value="">Любой</option>
+                        <option th:each="year : ${years}" th:value="${year.value}" th:text="${year.label}"></option>
+                    </select>
+                    <span class="field__error" th:if="${#fields.hasErrors('yearMax')}" th:errors="*{yearMax}"></span>
+                </label>
+                <label class="field">
+                    <span class="field__label">Пробег от, км</span>
+                    <input type="number" min="0" th:field="*{mileageMinKm}" placeholder="0">
+                </label>
+                <label class="field">
+                    <span class="field__label">Пробег до, км</span>
+                    <input type="number" min="0" th:field="*{mileageMaxKm}" placeholder="200000">
+                    <span class="field__error" th:if="${#fields.hasErrors('mileageMaxKm')}" th:errors="*{mileageMaxKm}"></span>
+                </label>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Характеристики</h2>
+            <div class="grid grid--2">
+                <div class="field">
+                    <span class="field__label">Коробка передач</span>
+                    <div class="checks">
+                        <label class="check" th:each="opt : ${transmissions}">
+                            <input type="checkbox" th:field="*{transmissionType}" th:value="${opt.value}">
+                            <span th:text="${opt.label}"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <span class="field__label">Тип двигателя</span>
+                    <div class="checks">
+                        <label class="check" th:each="opt : ${engines}">
+                            <input type="checkbox" th:field="*{engineType}" th:value="${opt.value}">
+                            <span th:text="${opt.label}"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <span class="field__label">Привод</span>
+                    <div class="checks">
+                        <label class="check" th:each="opt : ${drives}">
+                            <input type="checkbox" th:field="*{driveType}" th:value="${opt.value}">
+                            <span th:text="${opt.label}"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <span class="field__label">Тип кузова</span>
+                    <div class="checks checks--scroll">
+                        <label class="check" th:each="opt : ${bodies}">
+                            <input type="checkbox" th:field="*{bodyType}" th:value="${opt.value}">
+                            <span th:text="${opt.label}"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Марка, регион и цвет</h2>
+            <div class="grid grid--3">
+                <label class="field">
+                    <span class="field__label">Марка</span>
+                    <select th:field="*{brandId}">
+                        <option value="">Любая</option>
+                        <option th:each="opt : ${brands}" th:value="${opt.value}" th:text="${opt.label}"></option>
+                    </select>
+                    <span class="field__hint">Модель при необходимости добавьте в дополнительных параметрах.</span>
+                </label>
+                <label class="field">
+                    <span class="field__label">Область</span>
+                    <select th:field="*{region}">
+                        <option value="">Любая</option>
+                        <option th:each="opt : ${regions}" th:value="${opt.value}" th:text="${opt.label}"></option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span class="field__label">Цвет</span>
+                    <select th:field="*{color}">
+                        <option value="">Любой</option>
+                        <option th:each="opt : ${colors}" th:value="${opt.value}" th:text="${opt.label}"></option>
+                    </select>
+                </label>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Поведение</h2>
+            <div class="grid grid--3">
+                <label class="field">
+                    <span class="field__label">Страниц за проверку</span>
+                    <input type="number" min="1" max="10" th:field="*{pagesToScan}">
+                    <span class="field__hint">25 объявлений на страницу. 1–10.</span>
+                </label>
+                <label class="field">
+                    <span class="field__label">Свой интервал, мин</span>
+                    <input type="number" min="1" th:field="*{pollIntervalMinutes}" placeholder="как в настройках">
+                    <span class="field__hint">Пусто — использовать общий интервал из настроек.</span>
+                </label>
+                <label class="field field--check">
+                    <input type="checkbox" th:field="*{sendExistingOnFirstRun}">
+                    <span>При первой проверке отправить все найденные объявления</span>
+                </label>
+            </div>
+
+            <label class="field">
+                <span class="field__label">Дополнительные параметры av.by</span>
+                <textarea th:field="*{extraQuery}" rows="2"
+                          placeholder="has_photo360=1&amp;condition[4]=5"></textarea>
+                <span class="field__hint">Необязательно. Параметры добавляются в URL как есть.</span>
+            </label>
+        </section>
+
+        <div th:if="${previewUrl}" class="panel panel--muted">
+            <h2>Текущий URL фильтра</h2>
+            <a class="url" th:href="${previewUrl}" th:text="${previewUrl}" target="_blank" rel="noopener noreferrer"></a>
+        </div>
+
+        <div class="form__actions">
+            <button class="btn btn--primary" type="submit">Сохранить профиль</button>
+            <a class="btn" th:href="@{/}">Отмена</a>
+        </div>
+    </form>
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

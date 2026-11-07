@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Настройки')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: nav('settings')}"></header>
+<div th:replace="~{fragments/layout :: flash}"></div>
+
+<main class="container page page--narrow">
+    <div class="page__head">
+        <div>
+            <h1>Настройки</h1>
+            <p class="muted">Подключение Telegram-бота и общие параметры опроса av.by.</p>
+        </div>
+    </div>
+
+    <form class="form" th:action="@{/settings}" method="post" th:object="${form}">
+        <section class="panel">
+            <h2>Telegram-бот</h2>
+
+            <div class="grid grid--2">
+                <label class="field">
+                    <span class="field__label">Токен бота</span>
+                    <input type="password" th:field="*{telegramBotToken}" autocomplete="off"
+                           th:placeholder="${form.tokenConfigured} ? 'Токен уже сохранён — оставьте пустым' : '123456789:AA...'">
+                    <span class="field__hint">Получите у <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>.</span>
+                </label>
+
+                <label class="field">
+                    <span class="field__label">chat_id получателя</span>
+                    <input type="text" th:field="*{telegramChatId}" placeholder="123456789 или -1001234567890">
+                    <span class="field__hint">Можно несколько id через запятую.</span>
+                </label>
+            </div>
+
+            <div class="grid grid--2">
+                <label class="field field--check">
+                    <input type="checkbox" th:field="*{telegramEnabled}">
+                    <span>Отправлять объявления в Telegram</span>
+                </label>
+                <label class="field field--check">
+                    <input type="checkbox" th:field="*{sendPhoto}">
+                    <span>Отправлять с фотографией (если доступна)</span>
+                </label>
+            </div>
+
+            <div class="form__actions">
+                <button class="btn btn--primary" type="submit">Сохранить настройки</button>
+                <button class="btn" type="submit" th:formaction="@{/settings/test}" formmethod="post">
+                    Отправить тестовое сообщение
+                </button>
+                <button class="btn" type="button" id="findChatsBtn">Найти chat_id</button>
+            </div>
+
+            <div id="chatsResult" class="chats-result" hidden></div>
+        </section>
+
+        <section class="panel">
+            <h2>Опрос av.by</h2>
+            <div class="grid grid--2">
+                <label class="field">
+                    <span class="field__label">Общий интервал проверки, мин</span>
+                    <input type="number" min="1" max="1440" th:field="*{pollIntervalMinutes}">
+                    <span class="field__hint">Профиль может переопределить это значение.</span>
+                </label>
+                <label class="field">
+                    <span class="field__label">Пауза между запросами, мс</span>
+                    <input type="number" min="300" max="60000" th:field="*{requestDelayMs}">
+                    <span class="field__hint">Не ставьте слишком маленькой, чтобы av.by не ограничил доступ.</span>
+                </label>
+            </div>
+        </section>
+    </form>
+
+    <section class="panel panel--muted">
+        <h2>Как подключить бота</h2>
+        <ol class="steps">
+            <li>Откройте <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>, отправьте <code>/newbot</code> и получите токен.</li>
+            <li>Вставьте токен выше и нажмите «Сохранить настройки».</li>
+            <li>Напишите вашему боту любое сообщение в Telegram (например, <code>/start</code>).</li>
+            <li>Нажмите «Найти chat_id» — приложение покажет найденные чаты. Скопируйте нужный id в поле chat_id.</li>
+            <li>Сохраните настройки и нажмите «Отправить тестовое сообщение».</li>
+        </ol>
+        <p class="muted">Токен хранится локально в базе H2 и никогда не выводится обратно на страницу.</p>
+    </section>
+
+    <section class="panel panel--muted">
+        <h2>Служебное</h2>
+        <div class="grid grid--2">
+            <div class="field">
+                <span class="field__label">Последняя проверка</span>
+                <span class="muted" th:text="${settings.lastPollStatus != null ? settings.lastPollStatus : 'ещё не выполнялась'}">—</span>
+            </div>
+            <form th:action="@{/settings/clear-token}" method="post"
+                  onsubmit="return confirm('Удалить сохранённый токен бота?')">
+                <button class="btn btn--danger btn--small" type="submit">Удалить токен</button>
+            </form>
+        </div>
+    </section>
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+<script th:src="@{/js/app.js}"></script>
+</body>
+</html>

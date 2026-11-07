@@ -1,0 +1,25 @@
+services:
+  avby:
+    build:
+      context: .
+    image: avby-monitor:latest
+    container_name: avby-monitor
+    restart: unless-stopped
+    # Port is bound to localhost only: reach the UI through an SSH tunnel.
+    # If you really need public access, use "8080:8080" and put an
+    # authenticating reverse proxy (Caddy/nginx) in front.
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      TZ: Europe/Minsk
+      # For a 1 GB server lower this to -Xms96m -Xmx320m.
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
+      SPRING_THYMELEAF_CACHE: "true"
+    volumes:
+      # H2 database and all history live on the host, so rebuilds keep data.
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

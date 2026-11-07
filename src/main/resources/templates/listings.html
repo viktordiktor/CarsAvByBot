@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Объявления')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: nav('listings')}"></header>
+<div th:replace="~{fragments/layout :: flash}"></div>
+
+<main class="container page">
+    <div class="page__head">
+        <div>
+            <h1>История объявлений</h1>
+            <p class="muted">Всё, что приложение уже видело. Повторно объявления не отправляются автоматически.</p>
+        </div>
+        <form class="inline-form" th:action="@{/listings}" method="get">
+            <select name="profileId">
+                <option value="">Все профили</option>
+                <option th:each="profile : ${profiles}" th:value="${profile.id}"
+                        th:selected="${selectedProfileId != null and selectedProfileId == profile.id}"
+                        th:text="${profile.name}"></option>
+            </select>
+            <button class="btn btn--small" type="submit">Показать</button>
+        </form>
+    </div>
+
+    <div th:if="${#lists.isEmpty(listings)}" class="empty">
+        <p>Пока нет сохранённых объявлений.</p>
+        <a class="btn btn--primary" th:href="@{/}">Перейти к профилям</a>
+    </div>
+
+    <div class="table-wrap" th:if="${!#lists.isEmpty(listings)}">
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Фото</th>
+                <th>Объявление</th>
+                <th>Цена</th>
+                <th>Параметры</th>
+                <th>Место и время</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="item : ${listings}">
+                <td class="cell-photo">
+                    <a th:href="${item.url}" target="_blank" rel="noopener noreferrer"
+                       th:if="${item.imageUrl != null and !item.imageUrl.isEmpty()}">
+                        <img th:src="${item.imageUrl}" alt="" loading="lazy" referrerpolicy="no-referrer">
+                    </a>
+                </td>
+                <td>
+                    <a class="table__title" th:href="${item.url}" target="_blank" rel="noopener noreferrer"
+                       th:text="${item.title}">Объявление</a>
+                    <div class="muted table__desc" th:if="${item.description != null and !item.description.isEmpty()}"
+                         th:text="${#strings.abbreviate(item.description, 160)}"></div>
+                </td>
+                <td class="nowrap" th:text="${item.priceText}">—</td>
+                <td>
+                    <div th:text="${item.yearText}"></div>
+                    <div class="muted" th:text="${item.paramsText}"></div>
+                    <div class="muted" th:text="${item.mileageText}"></div>
+                </td>
+                <td>
+                    <div th:text="${item.location}"></div>
+                    <div class="muted" th:text="${item.firstSeenFormatted}"></div>
+                </td>
+                <td>
+                    <span class="pill pill--small"
+                          th:classappend="${item.telegramSent ? 'pill--on' : (item.telegramClaimed ? 'pill--warn' : 'pill--off')}"
+                          th:text="${item.telegramSent ? 'отправлено' : (item.telegramClaimed ? 'без подтверждения' : (item.notified ? 'не отправлено' : 'ожидает'))}">статус</span>
+                    <div class="muted table__err" th:if="${item.notifyError != null}"
+                         th:text="${item.notifyError}"></div>
+                </td>
+                <td class="nowrap">
+                    <form th:action="@{/listings/{id}/resend(id=${item.id})}" method="post"
+                          onsubmit="return confirm('Отправить это объявление в Telegram ещё раз? Возможен дубль.')">
+                        <button class="btn btn--small" type="submit">Отправить снова</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Панель')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: nav('dashboard')}"></header>
+<div th:replace="~{fragments/layout :: flash}"></div>
+
+<main class="container page">
+    <section class="hero">
+        <div>
+            <h1>Мониторинг срочных объявлений</h1>
+            <p class="muted">Приложение следит за cars.av.by и присылает новые объявления в Telegram.</p>
+        </div>
+        <div class="hero__actions">
+            <form th:action="@{/poll-all}" method="post">
+                <button class="btn btn--primary" type="submit">Проверить всё сейчас</button>
+            </form>
+            <a class="btn" th:href="@{/settings}">Настройки Telegram</a>
+        </div>
+    </section>
+
+    <div th:if="${!telegramReady}" class="alert alert--warn">
+        <strong>Telegram ещё не настроен.</strong>
+        Добавьте токен бота и chat_id в <a th:href="@{/settings}">настройках</a>, иначе объявления будут
+        только сохраняться в истории, но не отправляться.
+    </div>
+
+    <section class="stats">
+        <article class="stat">
+            <span class="stat__value" th:text="${totalSeen}">0</span>
+            <span class="stat__label">объявлений в истории</span>
+        </article>
+        <article class="stat">
+            <span class="stat__value" th:text="${lastDaySeen}">0</span>
+            <span class="stat__label">найдено за 24 часа</span>
+        </article>
+        <article class="stat">
+            <span class="stat__value" th:text="${pendingSeen}">0</span>
+            <span class="stat__label">ожидают отправки</span>
+        </article>
+        <article class="stat">
+            <span class="stat__value" th:text="${#lists.size(profiles)}">0</span>
+            <span class="stat__label">профилей поиска</span>
+        </article>
+    </section>
+
+    <section class="section">
+        <div class="section__head">
+            <h2>Профили поиска</h2>
+            <a class="btn btn--small" th:href="@{/profiles/new}">Добавить профиль</a>
+        </div>
+
+        <div th:if="${#lists.isEmpty(profiles)}" class="empty">
+            <p>Пока нет ни одного профиля.</p>
+            <a class="btn btn--primary" th:href="@{/profiles/new}">Создать первый профиль</a>
+        </div>
+
+        <div class="profiles">
+            <article class="profile" th:each="profile : ${profiles}"
+                     th:classappend="${!profile.enabled} ? 'profile--off' : ''">
+                <div class="profile__head">
+                    <div>
+                        <h3 th:text="${profile.name}">Название</h3>
+                        <p class="muted" th:text="${profile.filtersSummary}">фильтры</p>
+                    </div>
+                    <span class="pill" th:classappend="${profile.enabled} ? 'pill--on' : 'pill--off'"
+                          th:text="${profile.enabled} ? 'включён' : 'выключен'">статус</span>
+                </div>
+
+                <dl class="profile__meta">
+                    <div>
+                        <dt>Последняя проверка</dt>
+                        <dd th:text="${profile.lastCheckedFormatted}">—</dd>
+                    </div>
+                    <div>
+                        <dt>Найдено объявлений</dt>
+                        <dd th:text="${profileSeenCounts[profile.id]}">0</dd>
+                    </div>
+                    <div>
+                        <dt>Страниц за проверку</dt>
+                        <dd th:text="${profile.pagesToScan}">1</dd>
+                    </div>
+                    <div>
+                        <dt>Интервал</dt>
+                        <dd th:text="${profile.pollIntervalMinutes != null ? profile.pollIntervalMinutes + ' мин' : 'общий'}">общий</dd>
+                    </div>
+                </dl>
+
+                <div th:if="${profile.lastError}" class="alert alert--err" th:text="${profile.lastError}"></div>
+
+                <div class="profile__actions">
+                    <a class="btn btn--small" th:href="@{/profiles/{id}/edit(id=${profile.id})}">Изменить</a>
+                    <form th:action="@{/profiles/{id}/poll(id=${profile.id})}" method="post">
+                        <button class="btn btn--small btn--primary" type="submit">Проверить</button>
+                    </form>
+                    <form th:action="@{/profiles/{id}/toggle(id=${profile.id})}" method="post">
+                        <button class="btn btn--small" type="submit"
+                                th:text="${profile.enabled} ? 'Выключить' : 'Включить'">Выключить</button>
+                    </form>
+                    <form th:action="@{/profiles/{id}/reset(id=${profile.id})}" method="post"
+                          onsubmit="return confirm('Очистить историю профиля? Следующая проверка станет базовой.')">
+                        <button class="btn btn--small" type="submit">Сбросить историю</button>
+                    </form>
+                    <form th:action="@{/profiles/{id}/delete(id=${profile.id})}" method="post"
+                          onsubmit="return confirm('Удалить профиль и всю его историю?')">
+                        <button class="btn btn--small btn--danger" type="submit">Удалить</button>
+                    </form>
+                    <a class="btn btn--small btn--ghost" th:href="${profileUrls[profile.id]}" target="_blank"
+                       rel="noopener noreferrer">Открыть на av.by ↗</a>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="section__head">
+            <h2>Последние объявления</h2>
+            <a class="btn btn--small" th:href="@{/listings}">Вся история</a>
+        </div>
+
+        <div th:if="${#lists.isEmpty(recent)}" class="empty">
+            <p>Объявлений пока нет. Запустите проверку профиля.</p>
+        </div>
+
+        <div class="cards">
+            <article class="card" th:each="item : ${recent}">
+                <a class="card__image" th:href="${item.url}" target="_blank" rel="noopener noreferrer"
+                   th:if="${item.imageUrl != null and !item.imageUrl.isEmpty()}">
+                    <img th:src="${item.imageUrl}" alt="" loading="lazy" referrerpolicy="no-referrer">
+                </a>
+                <div class="card__body">
+                    <div class="card__top">
+                        <a class="card__title" th:href="${item.url}" target="_blank" rel="noopener noreferrer"
+                           th:text="${item.title}">Название</a>
+                        <span class="card__price" th:text="${item.priceText}">цена</span>
+                    </div>
+                    <p class="card__params">
+                        <span th:text="${item.yearText}"></span>
+                        <span th:if="${item.paramsText != null and !item.paramsText.isEmpty()}"
+                              th:text="${' · ' + item.paramsText}"></span>
+                        <span th:if="${item.mileageText != null and !item.mileageText.isEmpty()}"
+                              th:text="${' · ' + item.mileageText}"></span>
+                    </p>
+                    <p class="card__meta">
+                        <span th:text="${item.location}"></span>
+                        <span th:if="${item.location != null and !item.location.isEmpty()}"> · </span>
+                        <span th:text="${item.firstSeenFormatted}"></span>
+                        <span class="pill pill--small"
+                              th:classappend="${item.telegramSent ? 'pill--on' : (item.telegramClaimed ? 'pill--warn' : 'pill--off')}"
+                              th:text="${item.telegramSent ? 'отправлено' : (item.telegramClaimed ? 'без подтверждения' : (item.notified ? 'не отправлено' : 'ожидает'))}">статус</span>
+                    </p>
+                </div>
+            </article>
+        </div>
+    </section>
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>
