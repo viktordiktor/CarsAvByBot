@@ -25,6 +25,8 @@
   в production — PostgreSQL (Supabase), чтобы профили, настройки и история
   переживали перезапуски и деплои.
 - Liveness-эндпоинт `/health` для внешнего пингера на бесплатном хостинге.
+- Опциональный браузерный режим (Playwright/Chromium) для прохождения
+  JavaScript-проверки SafeLine WAF, если обычный HTTP-клиент получает `468`.
 
 ## Требования
 
@@ -142,6 +144,8 @@ spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:}
 avby.base-url=https://cars.av.by
 avby.request-timeout-seconds=30
 avby.proxy-url=
+avby.browser-enabled=false
+avby.browser-timeout-seconds=60
 avby.scheduling.enabled=true
 avby.scheduler-tick-ms=30000
 avby.scheduler-initial-delay-ms=15000
@@ -232,11 +236,13 @@ src/main/resources
    | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require` |
    | `SPRING_DATASOURCE_USERNAME` | `postgres.<project-ref>` |
    | `SPRING_DATASOURCE_PASSWORD` | пароль базы из Supabase |
+   | `AVBY_BROWSER_ENABLED` | `true` — если av.by отвечает `468` (см. ниже) |
 
-   В `render.yaml` они помечены `sync: false`, поэтому в Git ничего не попадёт.
+   В `render.yaml` секреты помечены `sync: false`, поэтому в Git ничего не попадёт.
    **Никогда не коммитьте пароль и connection string с паролем.**
 4. Дождитесь деплоя и откройте `https://<service>.onrender.com`. Настройте Telegram
-   и профили как обычно — теперь они сохраняются в Supabase.
+   и профили как обычно — теперь они сохраняются в Supabase. В логах проверьте
+   строку `av.by browser loaded ... (HTTP 200)`.
 
 Если создаёте сервис вручную, выберите **Language: Docker**, план **Free**,
 health check path `/health`. Порт Render передаёт через `PORT`, приложение уже
@@ -388,7 +394,7 @@ docker compose down
 Уменьшите память JVM в `docker-compose.yml`:
 
 ```yaml
-JAVA_TOOL_OPTIONS: "-Xms96m -Xmx320m"
+JAVA_TOOL_OPTIONS: "-Xms48m -Xmx192m -XX:MaxMetaspaceSize=110m -XX:+UseSerialGC -Xss512k"
 ```
 
 И добавьте swap:
@@ -413,16 +419,38 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 `468` — это не стандартный код ошибки, а страница анти-бот-проверки SafeLine WAF,
 которая стоит перед av.by. Она означает, что IP, с которого идёт запрос, попал под
 политику защиты (обычно это общие IP облачных хостингов, в том числе Render).
-Повторные запросы и смена User-Agent не помогают: нужен другой сетевой выход.
+Повторные запросы и смена User-Agent не помогают: нужен браузер или другой IP.
 
-Варианты по убыванию надёжности:
+Варианты по убыванию удобства:
 
-1. **Запустить бота на домашнем ПК, Raspberry Pi или VPS с чистым IP.** С домашнего
+1. **Браузерный режим (Playwright).** Включите:
+
+   ```properties
+   AVBY_BROWSER_ENABLED=true
+   ```
+
+   Приложение запустит настоящий Chromium (в Docker-образе он уже установлен),
+   выполнит JavaScript-проверку SafeLine и заберёт готовую страницу. В логах будет
+   `av.by browser loaded ... (HTTP 200)`. Это помогает против «незаметной»
+   JS/WASM-проверки. Если SafeLine включит интерактивную капчу/слайдер, браузер
+   сам её не пройдёт — тогда остаются варианты ниже.
+
+   Браузеру нужно примерно 150–250 МБ RAM сверх JVM. На Render Free (512 МБ)
+   `render.yaml` уже задаёт компактные флаги:
+
+   ```properties
+   JAVA_TOOL_OPTIONS=-Xms48m -Xmx192m -XX:MaxMetaspaceSize=110m -XX:+UseSerialGC -Xss512k
+   ```
+
+   Если Render будет убивать сервис по памяти (в логах `Out of memory` или
+   рестарты), включите прокси/домашний хостинг и уберите `AVBY_BROWSER_ENABLED`.
+
+2. **Запустить бота на домашнем ПК, Raspberry Pi или VPS с чистым IP.** С домашнего
    IP av.by обычно отвечает `200`. Для VPS лучше брать провайдера в Беларуси/России
-   или любой, чей IP не попал в анти-бот-базу.
-2. **Сменить регион Render.** Иногда выходной IP другого региона не заблокирован.
-   Придётся пересоздать сервис в другом регионе и проверить `/health` и логи.
-3. **Настроить HTTP-прокси.** Задайте переменную окружения:
+   или любой, чей IP не попал в анти-бот-базу. В этом случае браузерный режим можно
+   выключить — обычный HTTP-клиент работает быстрее.
+
+3. **Настроить HTTP-прокси для Render.** Задайте переменную окружения:
 
    ```properties
    AVBY_PROXY_URL=http://user:password@proxy-host:8080
@@ -430,10 +458,22 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
    Подойдёт любой HTTP/HTTPS-прокси с чистым IP (в том числе резидентный). Логин и
    пароль можно не указывать, если прокси без авторизации. Прокси используется
-   только для запросов к av.by, остальной трафик идёт напрямую.
+   только для запросов к av.by, остальной трафик идёт напрямую. В браузерном режиме
+   прокси тоже учитывается.
 
-Render Free без прокси или браузерного обхода для av.by, скорее всего, не подойдёт:
-его общие выходные IP уже помечены WAF. Это ограничение av.by, а не приложения.
+4. **Сменить регион Render.** Иногда выходной IP другого региона не заблокирован.
+   Придётся пересоздать сервис в другом регионе и проверить `/health` и логи.
+
+Локально для браузерного режима установите Chromium один раз:
+
+```powershell
+$env:JAVA_HOME='C:\Users\Lenovo\.jdks\openjdk-21.0.2'
+.\gradlew.bat playwrightInstall
+```
+
+Docker-образ теперь основан на официальном образе Playwright: он больше по размеру
+(~2 ГБ), зато Chromium и все системные библиотеки уже внутри. Это ограничение av.by,
+а не приложения.
 
 ## Ограничения и советы
 

@@ -20,8 +20,13 @@ services:
       # challenged by av.by's WAF (HTTP 468). Example: http://user:pass@host:8080
       - key: AVBY_PROXY_URL
         sync: false
-      # Free instance has 512 MB RAM; keep the JVM inside that budget.
+      # Use a real browser to pass SafeLine's JavaScript challenge.
+      - key: AVBY_BROWSER_ENABLED
+        value: "true"
+      - key: AVBY_BROWSER_TIMEOUT_SECONDS
+        value: "90"
+      # Free instance has 512 MB RAM; keep the JVM and Chromium inside that budget.
       - key: JAVA_TOOL_OPTIONS
-        value: "-Xms64m -Xmx320m"
+        value: "-Xms48m -Xmx192m -XX:MaxMetaspaceSize=110m -XX:+UseSerialGC -Xss512k"
       - key: SPRING_THYMELEAF_CACHE
         value: "true"

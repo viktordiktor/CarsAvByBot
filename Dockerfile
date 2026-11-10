@@ -16,19 +16,19 @@ RUN ./gradlew --no-daemon bootJar \
     && find build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' -exec cp {} /app/app.jar \;
 
 # ---------- runtime ----------
-FROM eclipse-temurin:21-jre
+# The Playwright image ships Chromium, its system dependencies and a JDK,
+# so the optional browser fallback works without installing anything at runtime.
+FROM mcr.microsoft.com/playwright/java:v1.64.0-noble
 WORKDIR /app
 
-RUN useradd --system --uid 1001 app \
-    && mkdir -p /app/data \
-    && chown -R app:app /app
-
 COPY --from=build /app/app.jar /app/app.jar
+RUN chown -R pwuser:pwuser /app
 
-USER app
+USER pwuser
 EXPOSE 8080
 
 ENV TZ=Europe/Minsk \
-    JAVA_TOOL_OPTIONS="-Xms128m -Xmx512m"
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    JAVA_TOOL_OPTIONS="-Xms48m -Xmx192m -XX:MaxMetaspaceSize=110m -XX:+UseSerialGC -Xss512k"
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -26,6 +26,7 @@ dependencies {
 
     implementation 'org.jsoup:jsoup:1.18.3'
     implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'com.microsoft.playwright:playwright:1.64.0'
 
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'org.postgresql:postgresql'
@@ -41,4 +42,13 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// Downloads the browser used by AVBY_BROWSER_ENABLED=true. Not needed for tests.
+tasks.register('playwrightInstall', JavaExec) {
+    group = 'playwright'
+    description = 'Installs the Chromium build used by the Playwright fallback'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.microsoft.playwright.CLI'
+    args 'install', 'chromium'
 }

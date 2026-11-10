@@ -39,6 +39,7 @@ public class AvbyClient {
 
     private final AvbyFilterUrlBuilder urlBuilder;
     private final AvbyParser parser;
+    private final AvbyBrowserClient browserClient;
     private final HttpClient httpClient;
     private final Duration requestTimeout;
     private final int maxAttempts = 3;
@@ -46,11 +47,13 @@ public class AvbyClient {
     public AvbyClient(
             AvbyFilterUrlBuilder urlBuilder,
             AvbyParser parser,
+            AvbyBrowserClient browserClient,
             @Value("${avby.request-timeout-seconds:30}") long timeoutSeconds,
             @Value("${avby.proxy-url:}") String proxyUrl
     ) {
         this.urlBuilder = urlBuilder;
         this.parser = parser;
+        this.browserClient = browserClient;
         this.requestTimeout = Duration.ofSeconds(timeoutSeconds);
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
@@ -105,6 +108,9 @@ public class AvbyClient {
     }
 
     public String fetch(String url) {
+        if (browserClient.isEnabled()) {
+            return browserClient.fetch(url);
+        }
         IOException lastIoException = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
