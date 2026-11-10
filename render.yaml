@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: avby-monitor
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Fill these in the Render dashboard (they are secrets, never commit them).
+      # Use the Supabase "Session pooler" connection string, see README.
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      # Free instance has 512 MB RAM; keep the JVM inside that budget.
+      - key: JAVA_TOOL_OPTIONS
+        value: "-Xms64m -Xmx320m"
+      - key: SPRING_THYMELEAF_CACHE
+        value: "true"

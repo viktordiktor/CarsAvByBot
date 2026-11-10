@@ -36,7 +36,7 @@ public class AppSettings {
 
     private boolean sendPhoto = true;
 
-    private int pollIntervalMinutes = 5;
+    private int pollIntervalMinutes = 3;
 
     private int requestDelayMs = 1200;
 

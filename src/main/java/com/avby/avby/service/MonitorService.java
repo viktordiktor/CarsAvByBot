@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -26,12 +27,23 @@ public class MonitorService {
     private static final Logger log = LoggerFactory.getLogger(MonitorService.class);
     private static final int PAGE_SIZE = 25;
     private static final int MAX_NOTIFY_ATTEMPTS = 3;
+    /** Do not try to catch up more than this after a long outage. */
+    private static final long MAX_CATCHUP_MINUTES = 60;
+    /** Small overlap covers listings published while the previous poll was running. */
+    private static final long WINDOW_OVERLAP_SECONDS = 30;
 
     private final AvbyClient avbyClient;
     private final TelegramClient telegramClient;
     private final FilterProfileService profileService;
     private final AppSettingsService settingsService;
     private final SeenListingRepository seenListingRepository;
+
+    /**
+     * Last successful poll per profile. This is intentionally in memory: after
+     * a restart the monitor starts from "now minus one interval" instead of
+     * replaying everything that is missing from the (possibly wiped) database.
+     */
+    private final Map<Long, Instant> lastSuccessfulPoll = new ConcurrentHashMap<>();
 
     /** One poll at a time keeps av.by requests and Telegram messages predictable. */
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -144,6 +156,12 @@ public class MonitorService {
             settingsService.recordPollStarted();
             AppSettings settings = settingsService.get();
 
+            int intervalMinutes = profile.getPollIntervalMinutes() != null
+                    ? Math.max(1, profile.getPollIntervalMinutes())
+                    : Math.max(1, settings.getPollIntervalMinutes());
+            Instant now = Instant.now();
+            Instant windowStart = windowStartFor(profile, intervalMinutes, now);
+
             int pages = Math.max(1, Math.min(10, profile.getPagesToScan()));
             int delayMs = Math.max(300, settings.getRequestDelayMs());
             List<AvbyListing> fetched = new ArrayList<>();
@@ -156,6 +174,12 @@ public class MonitorService {
                 }
                 fetched.addAll(pageResult.listings());
                 if (pageResult.listings().isEmpty()) {
+                    break;
+                }
+                // Results are sorted by "newest activity" (bumps included), so
+                // once the whole page is older than the window, later pages are
+                // older too.
+                if (isPageOlderThanWindow(pageResult.listings(), windowStart)) {
                     break;
                 }
                 if (totalCount > 0 && page * PAGE_SIZE >= totalCount) {
@@ -171,9 +195,18 @@ public class MonitorService {
                 unique.putIfAbsent(listing.advertId(), listing);
             }
             List<AvbyListing> listings = new ArrayList<>(unique.values());
+            List<AvbyListing> fresh = listings.stream()
+                    .filter(listing -> isFresh(listing, windowStart))
+                    .toList();
 
-            boolean firstRun = !profile.isBaselineDone()
-                    && seenListingRepository.countByProfileId(profile.getId()) == 0;
+            long withoutDate = listings.stream()
+                    .filter(listing -> listing.publishedAt() == null)
+                    .count();
+            if (withoutDate > 0) {
+                log.warn("Profile {}: {} listings without publishedAt were skipped "
+                        + "(av.by markup may have changed)", profile.getId(), withoutDate);
+            }
+
             boolean telegramReady = isTelegramReady(settings);
 
             int newCount = 0;
@@ -183,29 +216,63 @@ public class MonitorService {
             int unconfirmed = 0;
             Set<Long> attemptedThisPoll = new HashSet<>();
 
-            if (firstRun) {
-                profile.setBaselineDone(true);
-                boolean sendExisting = profile.isSendExistingOnFirstRun() && telegramReady;
-                for (AvbyListing listing : listings) {
-                    SeenListing seen = toEntity(profile.getId(), listing);
-                    if (!sendExisting) {
-                        // Baseline: remember existing listings without spamming the chat.
-                        seen.setNotified(true);
-                        seen.setNotifyError(telegramReady
-                                ? "Первый запуск: объявление сохранено без отправки"
-                                : "Telegram не настроен");
+            for (AvbyListing listing : fresh) {
+                if (seenListingRepository.existsByProfileIdAndAdvertId(
+                        profile.getId(), listing.advertId())) {
+                    continue;
+                }
+                SeenListing seen = toEntity(profile.getId(), listing);
+                newCount++;
+
+                if (seenListingRepository.existsByAdvertIdAndTelegramClaimedTrue(listing.advertId())) {
+                    // Another profile already owns delivery for this advert.
+                    markAlreadyClaimed(seen, listing.advertId());
+                    skipped++;
+                    seenListingRepository.save(seen);
+                    continue;
+                }
+                if (!telegramReady) {
+                    seen.setNotified(true);
+                    seen.setNotifyError("Telegram не настроен");
+                    skipped++;
+                    seenListingRepository.save(seen);
+                    continue;
+                }
+
+                DeliveryOutcome outcome = deliver(seen, listing, settings);
+                attemptedThisPoll.add(seen.getId());
+                switch (outcome.status()) {
+                    case SENT -> sent++;
+                    case AMBIGUOUS -> {
+                        failed++;
+                        unconfirmed++;
+                    }
+                    case RETRYABLE, PERMANENT -> failed++;
+                }
+            }
+
+            if (telegramReady) {
+                List<SeenListing> pending = seenListingRepository
+                        .findTop50ByProfileIdAndNotifiedFalseAndTelegramClaimedFalseAndNotifyAttemptsLessThanOrderByFirstSeenAtAsc(
+                                profile.getId(), MAX_NOTIFY_ATTEMPTS);
+                for (SeenListing seen : pending) {
+                    // Rows that failed earlier in this same poll are retried on
+                    // the next poll, not immediately.
+                    if (seen.getId() != null && attemptedThisPoll.contains(seen.getId())) {
+                        continue;
+                    }
+                    if (seenListingRepository.existsByAdvertIdAndTelegramClaimedTrueAndIdNot(
+                            seen.getAdvertId(), seen.getId())) {
+                        markAlreadyClaimed(seen, seen.getAdvertId());
                         skipped++;
                         seenListingRepository.save(seen);
                         continue;
                     }
-                    if (seenListingRepository.existsByAdvertIdAndTelegramClaimedTrue(listing.advertId())) {
-                        markAlreadyClaimed(seen, listing.advertId());
-                        skipped++;
-                        seenListingRepository.save(seen);
-                        continue;
+                    AvbyListing listing = unique.get(seen.getAdvertId());
+                    if (listing == null) {
+                        listing = fromEntity(seen);
                     }
                     DeliveryOutcome outcome = deliver(seen, listing, settings);
-                    attemptedThisPoll.add(seen.getId());
                     switch (outcome.status()) {
                         case SENT -> sent++;
                         case AMBIGUOUS -> {
@@ -214,86 +281,20 @@ public class MonitorService {
                         }
                         case RETRYABLE, PERMANENT -> failed++;
                     }
-                }
-                newCount = sendExisting ? listings.size() : 0;
-            } else {
-                for (AvbyListing listing : listings) {
-                    if (seenListingRepository.existsByProfileIdAndAdvertId(
-                            profile.getId(), listing.advertId())) {
-                        continue;
-                    }
-                    SeenListing seen = toEntity(profile.getId(), listing);
-                    newCount++;
-
-                    if (seenListingRepository.existsByAdvertIdAndTelegramClaimedTrue(listing.advertId())) {
-                        // Another profile already owns delivery for this advert.
-                        markAlreadyClaimed(seen, listing.advertId());
-                        skipped++;
-                        seenListingRepository.save(seen);
-                        continue;
-                    }
-                    if (!telegramReady) {
-                        seen.setNotified(true);
-                        seen.setNotifyError("Telegram не настроен");
-                        skipped++;
-                        seenListingRepository.save(seen);
-                        continue;
-                    }
-
-                    DeliveryOutcome outcome = deliver(seen, listing, settings);
-                    attemptedThisPoll.add(seen.getId());
-                    switch (outcome.status()) {
-                        case SENT -> sent++;
-                        case AMBIGUOUS -> {
-                            failed++;
-                            unconfirmed++;
-                        }
-                        case RETRYABLE, PERMANENT -> failed++;
-                    }
-                }
-
-                if (telegramReady) {
-                    List<SeenListing> pending = seenListingRepository
-                            .findTop50ByProfileIdAndNotifiedFalseAndTelegramClaimedFalseAndNotifyAttemptsLessThanOrderByFirstSeenAtAsc(
-                                    profile.getId(), MAX_NOTIFY_ATTEMPTS);
-                    for (SeenListing seen : pending) {
-                        // Rows that failed earlier in this same poll are retried on
-                        // the next poll, not immediately.
-                        if (seen.getId() != null && attemptedThisPoll.contains(seen.getId())) {
-                            continue;
-                        }
-                        if (seenListingRepository.existsByAdvertIdAndTelegramClaimedTrueAndIdNot(
-                                seen.getAdvertId(), seen.getId())) {
-                            markAlreadyClaimed(seen, seen.getAdvertId());
-                            skipped++;
-                            seenListingRepository.save(seen);
-                            continue;
-                        }
-                        AvbyListing listing = unique.get(seen.getAdvertId());
-                        if (listing == null) {
-                            listing = fromEntity(seen);
-                        }
-                        DeliveryOutcome outcome = deliver(seen, listing, settings);
-                        switch (outcome.status()) {
-                            case SENT -> sent++;
-                            case AMBIGUOUS -> {
-                                failed++;
-                                unconfirmed++;
-                            }
-                            case RETRYABLE, PERMANENT -> failed++;
-                        }
-                        sleep(300);
-                    }
+                    sleep(300);
                 }
             }
 
             profile.setLastCheckedAt(Instant.now());
             profile.setLastError(null);
             profileService.saveRuntimeState(profile);
+            lastSuccessfulPoll.put(profile.getId(), now);
 
             String status = String.format(
-                    "«%s»: найдено %d, новых %d, отправлено %d, ошибок %d, без подтверждения %d, пропущено %d",
-                    profile.getName(), listings.size(), newCount, sent, failed, unconfirmed, skipped);
+                    "«%s»: найдено %d, свежих %d, новых %d, отправлено %d, ошибок %d, "
+                            + "без подтверждения %d, пропущено %d",
+                    profile.getName(), listings.size(), fresh.size(), newCount,
+                    sent, failed, unconfirmed, skipped);
             settingsService.recordPollFinished(status);
             log.info("Poll finished in {} ms: {}", System.currentTimeMillis() - started, status);
             return new PollSummary(true, status, listings.size(), newCount, sent, failed, skipped, unconfirmed);
@@ -313,6 +314,41 @@ public class MonitorService {
         } finally {
             running.set(false);
         }
+    }
+
+    private Instant windowStartFor(FilterProfile profile, int intervalMinutes, Instant now) {
+        Instant since = lastSuccessfulPoll.get(profile.getId());
+        if (since == null) {
+            // Cold start (also after a Render restart with an empty database):
+            // look only at the last interval, never at the whole history.
+            return now.minusSeconds(intervalMinutes * 60L);
+        }
+        Instant earliest = now.minusSeconds(MAX_CATCHUP_MINUTES * 60L);
+        if (since.isBefore(earliest)) {
+            since = earliest;
+        }
+        return since.minusSeconds(WINDOW_OVERLAP_SECONDS);
+    }
+
+    private boolean isFresh(AvbyListing listing, Instant windowStart) {
+        return listing.publishedAt() != null && !listing.publishedAt().isBefore(windowStart);
+    }
+
+    private boolean isPageOlderThanWindow(List<AvbyListing> listings, Instant windowStart) {
+        Instant oldestEvent = null;
+        for (AvbyListing listing : listings) {
+            Instant eventTime = listing.eventTime();
+            if (eventTime == null) {
+                // Unknown ordering: keep scanning, but never send this listing.
+                return false;
+            }
+            if (oldestEvent == null || eventTime.isBefore(oldestEvent)) {
+                oldestEvent = eventTime;
+            }
+        }
+        // Results are sorted newest first, so the oldest item on this page is
+        // also the newest possible item on the next page.
+        return oldestEvent != null && oldestEvent.isBefore(windowStart);
     }
 
     /**

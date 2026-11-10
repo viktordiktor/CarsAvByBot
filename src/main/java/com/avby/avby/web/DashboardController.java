@@ -98,7 +98,7 @@ public class DashboardController {
     @PostMapping("/profiles/{id}/reset")
     public String reset(@PathVariable Long id, RedirectAttributes redirect) {
         profileService.resetHistory(id);
-        redirect.addFlashAttribute("message", "История профиля очищена. Следующая проверка снова станет базовой.");
+        redirect.addFlashAttribute("message", "История профиля очищена");
         return "redirect:/";
     }
 

@@ -59,8 +59,6 @@ public class ProfileForm {
 
     private int pagesToScan = 1;
 
-    private boolean sendExistingOnFirstRun = false;
-
     private Integer pollIntervalMinutes;
 
     public static ProfileForm from(FilterProfile profile) {
@@ -86,7 +84,6 @@ public class ProfileForm {
         form.setColor(profile.getColor());
         form.setExtraQuery(profile.getExtraQuery());
         form.setPagesToScan(profile.getPagesToScan());
-        form.setSendExistingOnFirstRun(profile.isSendExistingOnFirstRun());
         form.setPollIntervalMinutes(profile.getPollIntervalMinutes());
         return form;
     }
@@ -114,7 +111,6 @@ public class ProfileForm {
         profile.setColor(color);
         profile.setExtraQuery(extraQuery);
         profile.setPagesToScan(pagesToScan);
-        profile.setSendExistingOnFirstRun(sendExistingOnFirstRun);
         profile.setPollIntervalMinutes(pollIntervalMinutes);
         return profile;
     }
@@ -307,14 +303,6 @@ public class ProfileForm {
 
     public void setPagesToScan(int pagesToScan) {
         this.pagesToScan = pagesToScan;
-    }
-
-    public boolean isSendExistingOnFirstRun() {
-        return sendExistingOnFirstRun;
-    }
-
-    public void setSendExistingOnFirstRun(boolean sendExistingOnFirstRun) {
-        this.sendExistingOnFirstRun = sendExistingOnFirstRun;
     }
 
     public Integer getPollIntervalMinutes() {

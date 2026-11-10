@@ -43,11 +43,17 @@ public class AvbyFilterUrlBuilder {
         add(params, "place_region[0]", blankToNull(profile.getRegion()));
         add(params, "color[0]", blankToNull(profile.getColor()));
 
+        // "Новые объявления": av.by's default "актуальные" mixes in promoted
+        // listings, so a freshly published advert can be pushed off page 1.
+        String extra = blankToNull(profile.getExtraQuery());
+        if (extra == null || !hasSort(extra)) {
+            add(params, "sort", 4);
+        }
+
         if (page > 1) {
             add(params, "page", page);
         }
 
-        String extra = blankToNull(profile.getExtraQuery());
         if (extra != null) {
             if (extra.startsWith("?") || extra.startsWith("&")) {
                 extra = extra.substring(1);
@@ -57,6 +63,12 @@ public class AvbyFilterUrlBuilder {
 
         String query = String.join("&", params);
         return baseUrl + "/filter" + (query.isEmpty() ? "" : "?" + query);
+    }
+
+    private boolean hasSort(String extra) {
+        return extra.startsWith("sort=")
+                || extra.contains("&sort=")
+                || extra.contains("?sort=");
     }
 
     private void add(List<String> params, String name, Object value) {

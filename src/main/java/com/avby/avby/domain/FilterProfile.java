@@ -104,10 +104,15 @@ public class FilterProfile {
     /** How many result pages (25 listings each) to inspect per poll. */
     private int pagesToScan = 1;
 
-    /** If true, the first poll sends all matching listings instead of only new ones. */
+    /**
+     * Kept only for compatibility with databases created by older versions.
+     * Newness is now determined by the publication time window, not by a
+     * baseline.
+     */
+    @Deprecated
     private boolean sendExistingOnFirstRun = false;
 
-    /** Set after the first successful poll so old listings are not re-sent. */
+    @Deprecated
     private boolean baselineDone = false;
 
     /** Optional per-profile polling interval override. */

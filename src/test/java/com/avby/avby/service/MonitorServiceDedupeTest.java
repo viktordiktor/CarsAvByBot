@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,7 +63,7 @@ class MonitorServiceDedupeTest {
         appSettingsRepository.deleteAll();
         Mockito.reset(avbyClient, telegramClient);
 
-        settingsService.update("123:TEST", "42", true, false, 5, 300);
+        settingsService.update("123:TEST", "42", true, false, 3, 300);
 
         listing = new AvbyListing(
                 ADVERT_ID,
@@ -76,6 +77,8 @@ class MonitorServiceDedupeTest {
                 "сегодня",
                 "Срочно, торг",
                 null,
+                null,
+                Instant.now(),
                 null
         );
 
@@ -87,8 +90,8 @@ class MonitorServiceDedupeTest {
 
     @Test
     void sameAdvertIsSentOnlyOnceAcrossProfiles() {
-        FilterProfile first = newProfile("Первый", true);
-        FilterProfile second = newProfile("Второй", true);
+        FilterProfile first = newProfile("Первый");
+        FilterProfile second = newProfile("Второй");
 
         monitorService.pollProfile(first.getId(), true);
         monitorService.pollProfile(second.getId(), true);
@@ -105,7 +108,7 @@ class MonitorServiceDedupeTest {
 
     @Test
     void repeatedPollDoesNotResendTheSameListing() {
-        FilterProfile profile = newProfile("Профиль", true);
+        FilterProfile profile = newProfile("Профиль");
 
         monitorService.pollProfile(profile.getId(), true);
         monitorService.pollProfile(profile.getId(), true);
@@ -115,18 +118,58 @@ class MonitorServiceDedupeTest {
     }
 
     @Test
-    void firstPollIsBaselineAndDoesNotSend() {
-        FilterProfile profile = newProfile("Профиль", false);
+    void listingOlderThanTheWindowIsIgnored() {
+        listing = new AvbyListing(
+                ADVERT_ID,
+                "BMW X5",
+                "https://cars.av.by/bmw/x5/" + ADVERT_ID,
+                "10 000 $",
+                "2015 г.",
+                "автомат, 3,0 л, дизель",
+                "200 000 км",
+                "Минск",
+                "сегодня",
+                "Срочно, торг",
+                null,
+                null,
+                Instant.now().minusSeconds(600),
+                null
+        );
+        when(avbyClient.fetchPage(any(), anyInt()))
+                .thenReturn(new AvbyClient.PageResult(List.of(listing), 1, "https://cars.av.by/filter"));
+        FilterProfile profile = newProfile("Профиль");
 
         monitorService.pollProfile(profile.getId(), true);
 
         verify(telegramClient, never()).sendListing(any(), any());
-        SeenListing row = seenListingRepository
-                .findByProfileIdAndAdvertId(profile.getId(), ADVERT_ID)
-                .orElseThrow();
-        assertThat(row.isNotified()).isTrue();
-        assertThat(row.isTelegramClaimed()).isFalse();
-        assertThat(row.isTelegramSent()).isFalse();
+        assertThat(seenListingRepository.countByProfileId(profile.getId())).isZero();
+    }
+
+    @Test
+    void bumpedListingWithOldPublishedAtIsIgnored() {
+        listing = new AvbyListing(
+                ADVERT_ID,
+                "BMW X5",
+                "https://cars.av.by/bmw/x5/" + ADVERT_ID,
+                "10 000 $",
+                "2015 г.",
+                "автомат, 3,0 л, дизель",
+                "200 000 км",
+                "Минск",
+                "2 минуты назад",
+                "Срочно, торг",
+                null,
+                null,
+                Instant.now().minusSeconds(60L * 60 * 24 * 30),
+                Instant.now().minusSeconds(60)
+        );
+        when(avbyClient.fetchPage(any(), anyInt()))
+                .thenReturn(new AvbyClient.PageResult(List.of(listing), 1, "https://cars.av.by/filter"));
+        FilterProfile profile = newProfile("Профиль");
+
+        monitorService.pollProfile(profile.getId(), true);
+
+        verify(telegramClient, never()).sendListing(any(), any());
     }
 
     @Test
@@ -135,7 +178,7 @@ class MonitorServiceDedupeTest {
                 .thenReturn(TelegramClient.TelegramResult.failed(
                         "Too Many Requests", TelegramClient.DeliveryStatus.RETRYABLE))
                 .thenReturn(TelegramClient.TelegramResult.sent("OK"));
-        FilterProfile profile = newProfile("Профиль", true);
+        FilterProfile profile = newProfile("Профиль");
 
         monitorService.pollProfile(profile.getId(), true);
 
@@ -165,8 +208,8 @@ class MonitorServiceDedupeTest {
         when(telegramClient.sendListing(any(), any()))
                 .thenReturn(TelegramClient.TelegramResult.failed(
                         "read timeout", TelegramClient.DeliveryStatus.AMBIGUOUS));
-        FilterProfile first = newProfile("Первый", true);
-        FilterProfile second = newProfile("Второй", true);
+        FilterProfile first = newProfile("Первый");
+        FilterProfile second = newProfile("Второй");
 
         monitorService.pollProfile(first.getId(), true);
 
@@ -189,7 +232,7 @@ class MonitorServiceDedupeTest {
         when(telegramClient.sendListing(any(), any()))
                 .thenReturn(TelegramClient.TelegramResult.failed(
                         "chat not found", TelegramClient.DeliveryStatus.PERMANENT));
-        FilterProfile profile = newProfile("Профиль", true);
+        FilterProfile profile = newProfile("Профиль");
 
         monitorService.pollProfile(profile.getId(), true);
         monitorService.pollProfile(profile.getId(), true);
@@ -203,12 +246,11 @@ class MonitorServiceDedupeTest {
         assertThat(row.isTelegramSent()).isFalse();
     }
 
-    private FilterProfile newProfile(String name, boolean baselineDone) {
+    private FilterProfile newProfile(String name) {
         FilterProfile profile = new FilterProfile();
         profile.setName(name);
         profile.setEnabled(true);
         profile.setPagesToScan(1);
-        profile.setBaselineDone(baselineDone);
         return profileRepository.save(profile);
     }
 }

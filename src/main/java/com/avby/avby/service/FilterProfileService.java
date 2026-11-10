@@ -66,7 +66,6 @@ public class FilterProfileService {
     public void resetHistory(Long id) {
         FilterProfile profile = get(id);
         seenListingRepository.deleteByProfileId(profile.getId());
-        profile.setBaselineDone(false);
         profile.setLastCheckedAt(null);
         profile.setLastError(null);
         profileRepository.save(profile);
@@ -98,7 +97,6 @@ public class FilterProfileService {
         target.setColor(trimToNull(form.getColor()));
         target.setExtraQuery(trimToNull(form.getExtraQuery()));
         target.setPagesToScan(Math.max(1, Math.min(10, form.getPagesToScan())));
-        target.setSendExistingOnFirstRun(form.isSendExistingOnFirstRun());
         target.setPollIntervalMinutes(form.getPollIntervalMinutes() == null
                 ? null
                 : Math.max(1, form.getPollIntervalMinutes()));

@@ -47,6 +47,20 @@ class AvbyFilterUrlBuilderTest {
         assertThat(url).contains("brands[0][brand]=6");
         assertThat(url).contains("place_region[0]=1001");
         assertThat(url).contains("color[0]=12");
+        assertThat(url).contains("sort=4");
+    }
+
+    @Test
+    void extraQueryCanOverrideSortOrder() {
+        FilterProfile profile = new FilterProfile();
+        profile.setSellerType(1);
+        profile.setExtraQuery("sort=1&has_photo360=1");
+
+        String url = builder.build(profile, 1);
+
+        assertThat(url).contains("sort=1");
+        assertThat(url).doesNotContain("sort=4");
+        assertThat(url).contains("has_photo360=1");
     }
 
     @Test

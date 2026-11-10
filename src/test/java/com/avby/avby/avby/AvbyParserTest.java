@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +45,24 @@ class AvbyParserTest {
         assertThat(second.advertId()).isEqualTo("555");
         assertThat(second.url()).isEqualTo("https://cars.av.by/audi/a6/555");
         assertThat(second.priceText()).isEqualTo("18 500 $");
+    }
+
+    @Test
+    void parsesExactTimestampsFromEmbeddedJson() throws IOException {
+        String nextData = "<script id=\"__NEXT_DATA__\" type=\"application/json\">"
+                + "{\"props\":{\"pageProps\":{\"filter\":{\"main\":{\"adverts\":["
+                + "{\"id\":142994121,\"publishedAt\":\"2026-11-10T09:30:30+0000\"},"
+                + "{\"id\":555,\"publishedAt\":\"2025-09-03T09:30:30+0000\","
+                + "\"renewedAt\":\"2026-11-10T09:38:20+0000\"}"
+                + "]}}}}}</script>";
+        String html = fixture().replace("</head>", nextData + "</head>");
+
+        List<AvbyListing> listings = parser.parse(html);
+
+        assertThat(listings.get(0).publishedAt()).isEqualTo(Instant.parse("2026-11-10T09:30:30Z"));
+        assertThat(listings.get(0).renewedAt()).isNull();
+        assertThat(listings.get(1).publishedAt()).isEqualTo(Instant.parse("2025-09-03T09:30:30Z"));
+        assertThat(listings.get(1).renewedAt()).isEqualTo(Instant.parse("2026-11-10T09:38:20Z"));
     }
 
     @Test

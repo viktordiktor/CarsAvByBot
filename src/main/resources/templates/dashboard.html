@@ -98,7 +98,7 @@
                                 th:text="${profile.enabled} ? 'Выключить' : 'Включить'">Выключить</button>
                     </form>
                     <form th:action="@{/profiles/{id}/reset(id=${profile.id})}" method="post"
-                          onsubmit="return confirm('Очистить историю профиля? Следующая проверка станет базовой.')">
+                          onsubmit="return confirm('Очистить историю профиля?')">
                         <button class="btn btn--small" type="submit">Сбросить историю</button>
                     </form>
                     <form th:action="@{/profiles/{id}/delete(id=${profile.id})}" method="post"

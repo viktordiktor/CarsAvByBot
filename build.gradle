@@ -28,6 +28,7 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.11.0'
 
     runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'org.postgresql:postgresql'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
