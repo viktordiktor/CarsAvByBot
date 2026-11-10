@@ -16,6 +16,10 @@ services:
         sync: false
       - key: SPRING_DATASOURCE_PASSWORD
         sync: false
+      # Optional: route av.by requests through a proxy if the service IP gets
+      # challenged by av.by's WAF (HTTP 468). Example: http://user:pass@host:8080
+      - key: AVBY_PROXY_URL
+        sync: false
       # Free instance has 512 MB RAM; keep the JVM inside that budget.
       - key: JAVA_TOOL_OPTIONS
         value: "-Xms64m -Xmx320m"
